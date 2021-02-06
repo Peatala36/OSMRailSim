@@ -43,5 +43,5 @@ Für den Zug wird die Kräftebilanz als mathematische Gleichung aufgestellt. Die
 
 ## Benötigte Module
 * OSMPythonTools https://github.com/mocnik-science/osm-python-tools/tree/master/docs
-* SRTM
+* SRTM.py https://github.com/tkrajina/srtm.py
 
