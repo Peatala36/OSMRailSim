@@ -18,18 +18,30 @@ class OSMRailExport():
         if sn==False or en==False:
             return "Fehler bei den angegeben Nodes"
 
-        c = math.sqrt(self.x**2+self.y**2)
+        # Zum Export der Daten aus OSM wird die Overpass Api benutz
+        # Dazu wird um die beiden Nodes eine Bounderybox gelegt
+        # Diese ist so groß, dass sie die beide Punkte umfasst und
+        # in jede Richtung um r*c erweitert ist. r ist dabei ein Faktor
+        # c ist der Koordinaten-Abstand der beiden Nodes
+        c = math.sqrt((sn.lon()-en.lon())**2+(sn.lat()-en.lat())**2)
         
-        bbx_x_min = min(sn.lon, en.lon)
-        bbx_x_max = max(sn.lon, en.lon)
-        bbx_y_min = min(sn.lat, en.lat)
-        bbx_y_max = min(sn.lat, en.lat)
+        r = 0.1
         
+        bbx_x_min = min(sn.lat(), en.lat()) - r*c
+        bbx_x_max = max(sn.lat(), en.lat()) + r*c
+        bbx_y_min = min(sn.lon(), en.lon()) - r*c
+        bbx_y_max = min(sn.lon(), en.lon()) + r*c
         
+        query = overpassQueryBuilder(bbox=[bbx_x_min, bbx_y_min, bbx_x_max, bbx_y_max], elementType='way', selector='"railway"="rail"', out='skel')
+        #query = '[timeout:25][out:json];(way["railway"="rail"](bbx_x_min, bbx_y_min, bbx_x_max, bbx_y_max);); (._;>;); out body;'
+        bbx_rail = overpass.query(query)
+
+        for n in bbx_rail.ways():
+            for m in n.nodes():
+                if m.id() == startNodeID:
+                    pass
         
-        query="node(%s)->.selectedNode;way(bn.selectedNode);(._;>;);out;" % startNode
-        n = overpass.query(query)
-        print(n)
+        return n
 
 
     def _getNode(self, nodeID):
@@ -77,3 +89,8 @@ class edge:
     def __init__(self, node1, node2):
         self.node1 = node1
         self.node2 = node2
+
+        
+
+d = OSMRailExport()
+s = d.routing(389926882, 8046673725)
