@@ -3,6 +3,8 @@ from OSMPythonTools.api import Api
 from OSMPythonTools.overpass import overpassQueryBuilder
 from OSMPythonTools.overpass import Overpass
 
+import math
+
 
 overpass = Overpass()
 api = Api()
@@ -12,8 +14,8 @@ class OSMRailExport():
     def __init__(self):
         pass
     def routing(self, startNodeID, endNodeID):
-        sn = self._getNode(startNode)
-        en = self._getNode(endNode)
+        sn = self._getNode(startNodeID)
+        en = self._getNode(endNodeID)
 
         if sn==False or en==False:
             return "Fehler bei den angegeben Nodes"
@@ -39,7 +41,7 @@ class OSMRailExport():
         for n in bbx_rail.ways():
             for m in n.nodes():
                 if m.id() == startNodeID:
-                    pass
+                    print("Hello")
         
         return n
 
@@ -47,7 +49,7 @@ class OSMRailExport():
     def _getNode(self, nodeID):
         new = node()        
         try:
-            n = api.query('node/' + str(node))
+            n = api.query('node/' + str(nodeID))
             #print(n.tags())
             new.lon = n.lon
             new.lat = n.lat
@@ -57,6 +59,7 @@ class OSMRailExport():
             return False
     
     def latlonInXY(self, node):
+        pass
         
 
 
@@ -75,7 +78,7 @@ class graph:
     def add_node(self, node):
         self._nodes.append(node)
     def add_edges(self, x, y):
-        self._edges(x)=y
+        pass
 
 class node:
     def __init__(self):
