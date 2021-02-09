@@ -14,37 +14,25 @@ api = Api()
 class OSMRailExport():
     def __init__(self):
         pass
-    def routing(self, startNodeID, endNodeID):
-        sn = self._getNode(startNodeID)
-        en = self._getNode(endNodeID)
 
-        if sn==False or en==False:
-            return "Fehler bei den angegeben Nodes"
+    def downloadBoundingBox(self, bbx=[]):
+        # Erzeuge Query für Overpass Api
+        query = overpassQueryBuilder(bbox=bbx, elementType='way', selector='"railway"="rail"', out='body')
 
-        # Zum Export der Daten aus OSM wird die Overpass Api benutz
-        # Dazu wird um die beiden Nodes eine Bounderybox gelegt
-        # Diese ist so groß, dass sie die beide Punkte umfasst und
-        # in jede Richtung um r*c erweitert ist. r ist dabei ein Faktor
-        # c ist der Koordinaten-Abstand der beiden Nodes
-        c = math.sqrt((sn.lon()-en.lon())**2+(sn.lat()-en.lat())**2)
-        
-        r = 0.1
-        
-        bbx_x_min = min(sn.lat(), en.lat()) - r*c
-        bbx_x_max = max(sn.lat(), en.lat()) + r*c
-        bbx_y_min = min(sn.lon(), en.lon()) - r*c
-        bbx_y_max = min(sn.lon(), en.lon()) + r*c
-        
-        query = overpassQueryBuilder(bbox=[bbx_x_min, bbx_y_min, bbx_x_max, bbx_y_max],
-                                     elementType='way', selector='"railway"="rail"', out='body')
-        #query = '[timeout:25][out:json];(way["railway"="rail"](bbx_x_min, bbx_y_min, bbx_x_max, bbx_y_max);); (._;>;); out body;'
-        bbx_rail = overpass.query(query)
+        # Führe die Datenabfrage mit der Overpass-Api durch
+        try:
+            bbx_rail = overpass.query(query)
+        except:
+            print("Fehler bei der Ausführung der Overpass-Abfrage")
 
         # Neue Instanz eines railNetworks:
         r = railNetwork()
 
         # Höhendaten
-        ele_data = srtm.get_data()
+        try:
+            ele_data = srtm.get_data()
+        except:
+            print("Fehler beim laden der Höhendaten")
 
         
         for w in bbx_rail.ways():
@@ -77,10 +65,39 @@ class OSMRailExport():
                     # Füge den e beim RailNetwork hinzu
                     r.edges.append(e)
 
+                for e in nw.edges:
+                    print(str(e.getNeighbor(nw).OSMId()))
                 previousNode = nw
         
         return r
+        
+    def routing(self, startNodeID, endNodeID):
+        sn = self._getNode(startNodeID)
+        en = self._getNode(endNodeID)
 
+        if sn==False or en==False:
+            return "Fehler bei den angegeben Nodes"
+
+        # Zum Export der Daten aus OSM wird die Overpass Api benutz
+        # Dazu wird um die beiden Nodes eine Bounderybox gelegt
+        # Diese ist so groß, dass sie die beide Punkte umfasst und
+        # in jede Richtung um r*c erweitert ist. r ist dabei ein Faktor
+        # c ist der Koordinaten-Abstand der beiden Nodes
+        c = math.sqrt((sn.lon()-en.lon())**2+(sn.lat()-en.lat())**2)
+        print(c)
+        a = 0.1
+        bbx = []
+
+        bbx.append(min(sn.lat(), en.lat()) - a*c)
+        bbx.append(min(sn.lon(), en.lon()) - a*c)
+        bbx.append(max(sn.lat(), en.lat()) + a*c)        
+        bbx.append(max(sn.lon(), en.lon()) + a*c)
+        
+        r = self.downloadBoundingBox(bbx)
+        route = self._aStar(r, sn, en)
+
+        return route
+        
 
     def _getNode(self, nodeID):
         new = node(nodeID)        
@@ -97,31 +114,41 @@ class OSMRailExport():
     def _latlonInXY(self, node):
         pass
 
-    def _aStar(self, railNetwork, startNodeID, endNodeID):
-        # Code copied from https://github.com/F6F/SimpleOsmRouter/blob/master/router/router.py#L291 and modified
-        exploredNodes = list()
-        knownNodes = list()
-        tmpNodes = list()
+    def _aStar(self, railNetwork, startNode, endNode, maxSteps = 100):
+        print("Start A*")
+        # Code copied from https://github.com/F6F/SimpleOsmRouter/blob/master/router/router.py and modified
+        #exploredNodes = list() # in Wiki als closedList bezeichnet
+        knownNodes = list() # in Wiki als openList bezeichnet
+        #tmpNodes = list()
 
-        maxSteps = 100
+        currentNode = startNode
+        knownNodes.append(currentNode)
 
-        nowNode = startNodeID
-        knownNodes.append(nowNode)
-
-        while ((nowNode != endNode) & (len(knownNodes) > 0) & (maxSteps > 0)):
+        while ((currentNode != endNode) & (len(knownNodes) > 0) & (maxSteps > 0)):
             maxSteps -= 1
-            knownNodes.remove(nowNode)
-            exploreNodes.append(nowNode)
-            nowNode.explored = True
-            tmpNodes.extend(nowNode.getNeighbors)
-            for i in tmpNodes:
+            knownNodes.remove(currentNode)
+            currentNode.explored = True
+            for i in currentNode.getNeighbors():
+                print(i)
                 i.known = True
-                if (i.explored == False):
-                    pass
+                if i.explored == False:
+                    i.setAStarAttributes(currentNode, endNode)
+                    if not i in knownNodes:
+                        knownNodes.append(i)
+            for i in knownNodes:
+                if currentNode.getScore() > i.getScore():
+                    currentNode = i
+        print(knownNodes)
+        nowNode = endNode
+        
+        while nowNode.cameFrom != None:
+            print(nowNode.OSMId)
+            nowNode = nowNode.cameFrom
+            
 
 
 class vector2d:
-    #Ähnlich zu https://docs.godotengine.org/en/stable/classes/class_vector2.html
+    # Ähnlich zu https://docs.godotengine.org/en/stable/classes/class_vector2.html
     def __init__(self, x, y):
         self.x = float(x)
         self.y = float(y)
@@ -145,11 +172,23 @@ class node:
         self.explored = False
         self.known = False
     def getNeighbors(self):
+        print("Node.getNeighbors")
         gn = list()
         for e in self.edges:
-            gn.append(e.geneighbor(self))
+            print("append")
+            gn.append(e.getNeighbor(self))
         return gn
-    def 
+    # Funktionen zur Unterstützung von A*
+    def setAStarAttributes(self, prefNode, destNode):
+        self.distanceFromStart = prefNode.distanceFromStart + calcDistance(prefNode, self)
+        self.distanceToDest = calcDistance(self,destNode)
+        self.cameFrom = prefNode
+        self.known = True
+    def getScore(self):
+        if self.known:
+            return self.distanceFromStart + self.distanceToDest
+        else:
+            return 0.0
 
 
 class edge:
