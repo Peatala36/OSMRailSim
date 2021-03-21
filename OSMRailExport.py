@@ -6,22 +6,33 @@ from OSMPythonTools.overpass import Overpass
 import math
 import srtm
 
+import matplotlib.pyplot as plt
+
 
 overpass = Overpass()
 api = Api()
 
-#
+# lon = geographische Länge -- x
+# lat = geographische Breite -- y
+
 class OSMRailExport():
     def __init__(self):
-        pass
+        self.earth_R = 6371001
 
     def downloadBoundingBox(self, bbx=[]):
+        # bbx = [lon_min, lat_min, lon_max, lat_max]
+
+        debug("Download Data with Bounding Box")
+        
         # Erzeuge Query für Overpass Api
         query = overpassQueryBuilder(bbox=bbx, elementType='way', selector='"railway"="rail"', out='body')
-
+        debug(query)
+        
         # Führe die Datenabfrage mit der Overpass-Api durch
         try:
+            debug("Führe Datenabfrage mit der Overpass Api durch...")
             bbx_rail = overpass.query(query)
+            debug("Erfolgreich durchgeführt!")
         except:
             print("Fehler bei der Ausführung der Overpass-Abfrage")
 
@@ -30,10 +41,13 @@ class OSMRailExport():
 
         # Höhendaten
         try:
+            debug("Lade Höhendaten...")
             ele_data = srtm.get_data()
+            debug("Erfolgreich durchgeführt!")
         except:
             print("Fehler beim laden der Höhendaten")
 
+        debug("Es wurden " + str(len(bbx_rail.ways())) + " Wege gefunden")
         
         for w in bbx_rail.ways():
             previousNode = None
@@ -44,6 +58,8 @@ class OSMRailExport():
                 nw.lon = n.lon()
                 nw.lat = n.lat()
                 nw.ele = ele_data.get_elevation(nw.lon, nw.lat)
+
+                nw.x, nw.y = self._lonlatInXY(bbx[0], bbx[1], nw.lon, nw.lat)
 
                 # Füge nw den RailNetwork hinzu:
                 r.nodes[nw.OSMId] = nw
@@ -65,10 +81,12 @@ class OSMRailExport():
                     # Füge den e beim RailNetwork hinzu
                     r.edges.append(e)
 
-                for e in nw.edges:
-                    print(str(e.getNeighbor(nw).OSMId()))
+                #for e in nw.edges:
+                #    print(str(e.getNeighbor(nw).OSMId()))
                 previousNode = nw
-        
+
+        debug("Es wurden " + str(len(r.nodes)) + " Nodes und " + str(len(r.edges)) + " Edges erstellt")
+
         return r
         
     def routing(self, startNodeID, endNodeID):
@@ -78,13 +96,12 @@ class OSMRailExport():
         if sn==False or en==False:
             return "Fehler bei den angegeben Nodes"
 
-        # Zum Export der Daten aus OSM wird die Overpass Api benutz
+        # Zum Export der Daten aus OSM wird die Overpass Api benutzt
         # Dazu wird um die beiden Nodes eine Bounderybox gelegt
         # Diese ist so groß, dass sie die beide Punkte umfasst und
         # in jede Richtung um r*c erweitert ist. r ist dabei ein Faktor
         # c ist der Koordinaten-Abstand der beiden Nodes
         c = math.sqrt((sn.lon()-en.lon())**2+(sn.lat()-en.lat())**2)
-        print(c)
         a = 0.1
         bbx = []
 
@@ -94,10 +111,26 @@ class OSMRailExport():
         bbx.append(max(sn.lon(), en.lon()) + a*c)
         
         r = self.downloadBoundingBox(bbx)
-        route = self._aStar(r, sn, en)
 
-        return route
-        
+        route = self._aStar(r, r.nodes[startNodeID], r.nodes[endNodeID])
+
+        return r#, route
+
+    def plotRoute(self, route, mode):
+        if mode == 1:
+            # XY-Darstellung
+            x = list()
+            y = list()
+            for p in route:
+                x.append(p.x)
+                y.append(p.y)
+
+            plt.plot(x, y)
+            plt.show()
+
+        elif mode == 2:
+            # Höhendarstellung
+            pass
 
     def _getNode(self, nodeID):
         new = node(nodeID)        
@@ -111,39 +144,63 @@ class OSMRailExport():
             print("Fehler mit " + str(node))
             return False
     
-    def _latlonInXY(self, node):
-        pass
+    def _lonlatInXY(self, lon_min, lat_min, lon, lat):
+        # Wandle die Punkte aus einem  in ein lokales X-Y-Koordinatensystem um
+        xy = list()
+        xy.append(math.sin((lon_min-lon)/180*math.pi)*math.cos(lat_min/180*math.pi)*self.earth_R)
+        xy.append(math.sin((lat_min-lat)/180*math.pi)*self.earth_R)
+        return xy
 
     def _aStar(self, railNetwork, startNode, endNode, maxSteps = 100):
-        print("Start A*")
+        debug("Start A*")
         # Code copied from https://github.com/F6F/SimpleOsmRouter/blob/master/router/router.py and modified
         #exploredNodes = list() # in Wiki als closedList bezeichnet
-        knownNodes = list() # in Wiki als openList bezeichnet
+        openlist = list() # in Wiki als openList bezeichnet
         #tmpNodes = list()
 
         currentNode = startNode
-        knownNodes.append(currentNode)
+        openlist.append(currentNode)
 
-        while ((currentNode != endNode) & (len(knownNodes) > 0) & (maxSteps > 0)):
+        while ((currentNode != endNode) & (len(openlist) > 0) & (maxSteps > 0)):
             maxSteps -= 1
-            knownNodes.remove(currentNode)
-            currentNode.explored = True
-            for i in currentNode.getNeighbors():
-                print(i)
-                i.known = True
-                if i.explored == False:
-                    i.setAStarAttributes(currentNode, endNode)
-                    if not i in knownNodes:
-                        knownNodes.append(i)
-            for i in knownNodes:
-                if currentNode.getScore() > i.getScore():
+            currentNode = openlist[0]
+            for i in openlist:
+                print(str(i.OSMId) + ": " + str(i.f))
+                if currentNode.f > i.f:
                     currentNode = i
-        print(knownNodes)
+            
+            print("CurrentNode: " + str(currentNode.OSMId))
+            openlist.remove(currentNode)
+            if currentNode == endNode:
+                # Wenn das Ziel gefunden ist, verlasse die Schleife
+                print("Ziel gefunden")
+                break
+            currentNode.explored = True
+            for successor in currentNode.getNeighbors():
+                if successor.explored:
+                    continue
+                tentative_g = currentNode.g + calcDistance(currentNode, i)
+                print("Nachbar: " + str(successor.OSMId) + " mit g=" + str(tentative_g))
+                if successor in openlist and tentative_g >= successor.g:
+                    continue
+                successor.cameFrom = currentNode
+                successor.g = tentative_g
+                successor.f = tentative_g + calcDistance(successor, endNode)
+                
+                if not successor in openlist:
+                    openlist.append(successor)
+
+        print(currentNode.OSMId)
         nowNode = endNode
+
+        route = list()
         
         while nowNode.cameFrom != None:
             print(nowNode.OSMId)
+            route.append(nowNode)
             nowNode = nowNode.cameFrom
+
+        return route
             
 
 
@@ -167,28 +224,16 @@ class node:
 
         # Attribute für A*
         self.cameFrom = None
-        self.distanceToDest = 0.0
-        self.distanceFromStart = 0.0
+        self.g = 0.0
+        self.f = 0.0
         self.explored = False
         self.known = False
     def getNeighbors(self):
-        print("Node.getNeighbors")
+        # Gibt eine Liste aller benachbarten Knoten zurück
         gn = list()
         for e in self.edges:
-            print("append")
             gn.append(e.getNeighbor(self))
         return gn
-    # Funktionen zur Unterstützung von A*
-    def setAStarAttributes(self, prefNode, destNode):
-        self.distanceFromStart = prefNode.distanceFromStart + calcDistance(prefNode, self)
-        self.distanceToDest = calcDistance(self,destNode)
-        self.cameFrom = prefNode
-        self.known = True
-    def getScore(self):
-        if self.known:
-            return self.distanceFromStart + self.distanceToDest
-        else:
-            return 0.0
 
 
 class edge:
@@ -225,9 +270,14 @@ class railNetwork:
         self.nodes[x] = y
         
         
-def calcDistance(self, node1, node2):
+def calcDistance(node1, node2):
     return math.sqrt((node1.x - node2.x)**2 + (node1.y - node2.y)**2)
+
+def debug(text):
+    debugLevel = 0
+    if debugLevel == 0:
+        print(text)
       
 
 d = OSMRailExport()
-s = d.routing(389926882, 8046673725)
+r = d.routing(389926882, 602027313)
