@@ -1,0 +1,44 @@
+{
+	"trains": [
+		{"trainID": 1,
+		"vehicles": [
+			{"typ": "Engine",
+			"name": "Lok1",
+			"power": 1000,
+			"nettoWeight": 90,
+			"tareWeight": 0,
+			"resistanceFaktorA": 1,
+			"resistanceFaktorB": 1,
+			"resistanceFaktorC": 1,
+			"massenfaktor": 1},
+			{"typ": "Vehicle",
+			"name": "Wagen1",
+			"nettoWeight": 30,
+			"tareWeight": 60,
+			"resistanceFaktorA": 1,
+			"resistanceFaktorB": 1,
+			"resistanceFaktorC": 1,
+			"massenfaktor": 1}
+		]},
+		{"trainID": 2,
+		"vehicles": [
+			{"typ": "Engine",
+			"name": "Lok2",
+			"power": 1000,
+			"nettoWeight": 90,
+			"tareWeight": 0,
+			"resistanceFaktorA": 1,
+			"resistanceFaktorB": 1,
+			"resistanceFaktorC": 1,
+			"massenfaktor": 1},
+			{"typ": "Vehicle",
+			"name": "Wagen2",
+			"nettoWeight": 30,
+			"tareWeight": 60,
+			"resistanceFaktorA": 1,
+			"resistanceFaktorB": 1,
+			"resistanceFaktorC": 1,
+			"massenfaktor": 1}
+		]}
+	]
+}
