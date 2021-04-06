@@ -1,69 +1,79 @@
 #Klasse für die Simulation von Fahrzeugen
 
+from pathlib import Path
+import json
+
 #########
 #Klassen#
 #########
-
-#Klasse für Berechnungsergebnisse
-class resultDataRow:
-    #Hier werden die berechneten Zuglaufdaten gespeichert
-    def __init__(self, laenge, time, v, f):
-        self.laenge = laenge
-        self.time = time
-        self.v = v
-        self.f = f
-
-#Klasse für Datenstapel
-class DataStack:
-    def __init__(self):
-        self._stack = set()
-    def add(self, x):
-        self._stack.append(x)
-    def delLast(self):
-        del self._stack[-1]
     
+class Trains:
+    def __init__(self):
+        self.dictOfTrains = dict()
+    def readVehicleDataFromFile(self, path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except:
+            print("Datei konnte nicht geladen werden")
+            return
 
-#Klasse für Züge
-class Train(DataStack):
+        try:
+            for i in data["trains"]:
+                t = Train(i['trainID'])
+                for j in i['vehicles']:
+                    v = Vehicle(j['name'])
+                    for a in j:
+                        if hasattr(v, a):
+                            setattr(v, a, j[a])
+                    t.vehicles.append(v)
+                self.dictOfTrains[i['trainID']] = t
+                    
+        except:
+            print("Fehler beim lesen der Datei")
+
+
+#Klasse für einen Zug
+class Train:
     def __init__(self, trainID):
         self.trainID = trainID
+        self.vehicles = list()
     def getMaxSpeed(self):
         speed = 0
-        for i in self._stack:
+        for i in self.vehicles:
             if speed<int(i.speed): speed = int(i.speed)
         return speed
     def getWeight(self):
         weight = 0
-        for i in self._stack:
-            weight += i.bruttoWeight
+        for i in self.vehicles:
+            weight += i.bruttoWeight()
         return weight
     def getLength(self):
         length = 0
-        for line in self._stack:
+        for line in self.vehicles:
             length += line.length
         return length
     def getTractiveForce(self, vakt, kraftschlussbeiwert):
         tE = 0
-        for i in self._stack:
-            if isinstance(i, Engine):
-                tE += i.tractiveForce(vakt, kraftschlussbeiwert)
+        for i in self.vehicles:
+            tE += i.tractiveForce(vakt, kraftschlussbeiwert)
         return tE
     def getTrainResistanceForce(self, vakt, deltaV=0):
         FWZ = 0
-        for i in self._stack:
+        for i in self.vehicles:
             FWZ += i.resistanceForce(vakt, deltaV)
         return FWZ
     def getMassenfaktor(self):
         a = 0
-        for i in self._stack:
-            a += i.massenfaktor * i.bruttoWeight
-        return a / self.getWeight
+        for i in self.vehicles:
+            a += i.massenfaktor * i.bruttoWeight()
+        return a / self.getWeight()
 
 #Klasse für Fahrzeuge
 class Vehicle:
     def __init__(self, name):
         self.name = name
-        self.category = ""   
+        self.typ = ""   
         self.numberDrivenAxles = 0
         self.length = 0
         self.speed = 0
@@ -73,20 +83,19 @@ class Vehicle:
         self.resistanceFaktorB = 0
         self.resistanceFaktorC = 0
         self.massenfaktor = 1
-    def resistanceForce(vakt, deltaV=0):
+
+        self.power = 0
+        self.abregelung = 0
+    def resistanceForce(self, vakt, deltaV=0):
         return (self.resistanceFaktorA
                 + self.resistanceFaktorB * vakt/100
                 + self.resistanceFaktorC * ((vakt + deltaV)/100)^2)
     def bruttoWeight(self):
         return self.nettoWeight + self.tareWeight
-
-#Klasse für angetriebene Fahrzeuge
-class Engine(Vehicle):
-    def __init__(self, power):
-        self.power = power
-        self.abregelung = 0
-    def tractiveForce(vakt, kraftschlussbeiwert):
-        return min(self.bruttoWeight * 9.81 * kraftschlussbeiwert
-                   - vakt * self.abregelung,
-                   self.power * 3.6 / (vakt + 0.000001))
-
+    def tractiveForce(self, vakt, kraftschlussbeiwert):
+        if vakt > 0:
+            return min(self.bruttoWeight() * 9.81 * kraftschlussbeiwert
+                       - vakt * self.abregelung,
+                       self.power * 3.6 / vakt)
+        else:
+            return 0
