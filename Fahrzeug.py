@@ -1,6 +1,5 @@
 #Klasse für die Simulation von Fahrzeugen
 
-from pathlib import Path
 import json
 
 #########
@@ -10,6 +9,8 @@ import json
 class Trains:
     def __init__(self):
         self.dictOfTrains = dict()
+    def __iter__(self):
+        return iter(self.dictOfTrains.values())
     def readVehicleDataFromFile(self, path):
         try:
             with open(path, encoding="utf-8") as f:
@@ -38,6 +39,8 @@ class Train:
     def __init__(self, trainID):
         self.trainID = trainID
         self.vehicles = list()
+    def __iter__(self):
+        return iter(self.vehicles)
     def getMaxSpeed(self):
         speed = 0
         for i in self.vehicles:
@@ -86,16 +89,20 @@ class Vehicle:
 
         self.power = 0
         self.abregelung = 0
+        self.max_tractiveForce = 0
     def resistanceForce(self, vakt, deltaV=0):
         return (self.resistanceFaktorA
                 + self.resistanceFaktorB * vakt/100
-                + self.resistanceFaktorC * ((vakt + deltaV)/100)^2)
+                + self.resistanceFaktorC * ((vakt + deltaV)/100)**2)
     def bruttoWeight(self):
         return self.nettoWeight + self.tareWeight
     def tractiveForce(self, vakt, kraftschlussbeiwert):
         if vakt > 0:
             return min(self.bruttoWeight() * 9.81 * kraftschlussbeiwert
                        - vakt * self.abregelung,
-                       self.power * 3.6 / vakt)
+                       self.power * 3.6 / vakt,
+                       self.max_tractiveForce)
+        elif vakt == 0:
+            return self.max_tractiveForce
         else:
             return 0
