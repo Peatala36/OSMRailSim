@@ -6,7 +6,11 @@ from OSMPythonTools.overpass import Overpass
 import math
 import srtm
 
+import math
 import matplotlib.pyplot as plt
+import numpy as np
+from scipy import interpolate
+
 
 
 overpass = Overpass()
@@ -277,6 +281,32 @@ def debug(text):
     debugLevel = 0
     if debugLevel == 0:
         print(text)
+        
+def interpolate(self):
+    #Die folgende Funktion interpoliert aus dem Streckenzug einen kubischen Spline
+    #Siehe https://de.wikipedia.org/wiki/Spline-Interpolation#Der_kubische_C%C2%B2-Spline
+    
+    s = len(self.knots)
+    #Koeffizientenmatrix a
+    self.a = np.zeros((s,s))
+    #Rechte Seite des Linearen Gleichungssystems b
+    self.b = np.zeros((s,1))
+
+    #Setze natürliche Randbedingungen
+    self.a[0,0]=1
+    self.a[s-1,s-1]=1
+
+    #Befülle die Matrizen a und b
+    for i in range(1, s-1):
+        self.a[i, i-1] = self.edges[i-1].le/6
+        self.a[i, i] = (self.edges[i-1].le+self.edges[i].le)/3
+        self.a[i, i+1] = self.edges[i].le/6
+        self.b[i, 0] = (self.knots[i+1].y-self.knots[i].y)/self.edges[i].le-(self.knots[i].y-self.knots[i-1].y)/self.edges[i-1].le
+
+    #Löse das Lineare Gleichungssystem
+    self.m = np.linalg.solve(self.a,self.b)
+    
+    #self.m ist die Momentenmatrix
       
 
 d = OSMRailExport()
