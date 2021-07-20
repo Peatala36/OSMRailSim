@@ -5,8 +5,6 @@ from OSMPythonTools.overpass import Overpass
 
 import math
 import srtm
-
-import math
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import interpolate
@@ -52,7 +50,7 @@ class OSMRailExport():
             print("Fehler beim laden der Höhendaten")
 
         debug("Es wurden " + str(len(bbx_rail.ways())) + " Wege gefunden")
-        
+
         for w in bbx_rail.ways():
             previousNode = None
             for n in w.nodes():
@@ -103,7 +101,7 @@ class OSMRailExport():
         # Zum Export der Daten aus OSM wird die Overpass Api benutzt
         # Dazu wird um die beiden Nodes eine Bounderybox gelegt
         # Diese ist so groß, dass sie die beide Punkte umfasst und
-        # in jede Richtung um r*c erweitert ist. r ist dabei ein Faktor
+        # in jede Richtung um a*c erweitert ist. a ist dabei ein Faktor.
         # c ist der Koordinaten-Abstand der beiden Nodes
         c = math.sqrt((sn.lon()-en.lon())**2+(sn.lat()-en.lat())**2)
         a = 0.1
@@ -118,7 +116,7 @@ class OSMRailExport():
 
         route = self._aStar(r, r.nodes[startNodeID], r.nodes[endNodeID])
 
-        return r#, route
+        return route#, route
 
     def plotRoute(self, route, mode):
         if mode == 1:
@@ -169,22 +167,22 @@ class OSMRailExport():
             maxSteps -= 1
             currentNode = openlist[0]
             for i in openlist:
-                print(str(i.OSMId) + ": " + str(i.f))
+                debug(str(i.OSMId) + ": " + str(i.f))
                 if currentNode.f > i.f:
                     currentNode = i
             
-            print("CurrentNode: " + str(currentNode.OSMId))
+            debug("CurrentNode: " + str(currentNode.OSMId))
             openlist.remove(currentNode)
             if currentNode == endNode:
                 # Wenn das Ziel gefunden ist, verlasse die Schleife
-                print("Ziel gefunden")
+                debug("Ziel gefunden")
                 break
             currentNode.explored = True
             for successor in currentNode.getNeighbors():
                 if successor.explored:
                     continue
                 tentative_g = currentNode.g + calcDistance(currentNode, i)
-                print("Nachbar: " + str(successor.OSMId) + " mit g=" + str(tentative_g))
+                debug("Nachbar: " + str(successor.OSMId) + " mit g=" + str(tentative_g))
                 if successor in openlist and tentative_g >= successor.g:
                     continue
                 successor.cameFrom = currentNode
@@ -194,7 +192,7 @@ class OSMRailExport():
                 if not successor in openlist:
                     openlist.append(successor)
 
-        print(currentNode.OSMId)
+        debug(currentNode.OSMId)
         nowNode = endNode
 
         route = list()
@@ -250,6 +248,8 @@ class edge:
         self.electrified  = False
         self.tunnel = False
         self.bridge = False
+
+        self.itp_h = abs(node2.x - node1.x)
     def getNeighbor(self, origin):
         if self._node1 == origin:
             return self._node2
@@ -272,6 +272,63 @@ class railNetwork:
         self.edges.append(node)
     def add_nodes(self, x, y):
         self.nodes[x] = y
+    def interpolate(self):
+        #Die folgende Funktion interpoliert aus dem Streckenzug einen kubischen Spline
+        #Siehe https://de.wikipedia.org/wiki/Spline-Interpolation#Der_kubische_C%C2%B2-Spline
+        
+        s = len(self.nodes)
+        #Koeffizientenmatrix a
+        self.a = np.zeros((s,s))
+        #Rechte Seite des Linearen Gleichungssystems b
+        self.b = np.zeros((s,1))
+
+        #Setze natürliche Randbedingungen
+        self.a[0,0]=1
+        self.a[s-1,s-1]=1
+
+        print(self.nodes)
+        
+        #Befülle die Matrizen a und b
+        for i in range(1, s-1):
+            self.a[i, i-1] = self.edges[i-1].itp_h/6
+            self.a[i, i] = (self.edges[i-1].itp_h+self.edges[i].itp_h)/3
+            self.a[i, i+1] = self.edges[i].itp_h/6
+           
+            
+            #self.b[i, 0] = (self.nodes[i+1].y-self.nodes[i].y)/self.edges[i].itp_h-(self.nodes[i].y-self.nodes[i-1].y)/self.edges[i-1].itp_h
+
+        #Löse das Lineare Gleichungssystem
+        self.m = np.linalg.solve(self.a,self.b)
+    
+        #self.m ist die Momentenmatrix
+        return self.m
+    def bSpline(self):
+        plist = list()
+        for key in self.nodes:
+            plist.append((self.nodes[key].x, self.nodes[key].y))
+
+        ctr=np.array(plist)
+        x=ctr[:,0]
+        y=ctr[:,1]
+
+        tck,u = interpolate.splprep([x,y],k=3,s=0)
+        u=np.linspace(0,1,num=1000,endpoint=True)
+        out = interpolate.splev(u,tck)
+
+        plt.figure()
+        plt.plot(x, y, 'ro', out[0], out[1], 'b')
+        plt.legend(['Points', 'Interpolated B-spline', 'True'],loc='best')
+        plt.axis([min(x)-1, max(x)+1, min(y)-1, max(y)+1])
+        plt.title('B-Spline interpolation')
+        plt.show()
+    def abstand(self):
+        l = list()
+        for e in self.edges:
+            a = math.sqrt((e._node1.x-e._node2.x)**2 + (e._node1.y-e._node2.y)**2)
+            l.append(a)
+
+        l.sort()
+        print(l)
         
         
 def calcDistance(node1, node2):
@@ -282,31 +339,7 @@ def debug(text):
     if debugLevel == 0:
         print(text)
         
-def interpolate(self):
-    #Die folgende Funktion interpoliert aus dem Streckenzug einen kubischen Spline
-    #Siehe https://de.wikipedia.org/wiki/Spline-Interpolation#Der_kubische_C%C2%B2-Spline
-    
-    s = len(self.knots)
-    #Koeffizientenmatrix a
-    self.a = np.zeros((s,s))
-    #Rechte Seite des Linearen Gleichungssystems b
-    self.b = np.zeros((s,1))
 
-    #Setze natürliche Randbedingungen
-    self.a[0,0]=1
-    self.a[s-1,s-1]=1
-
-    #Befülle die Matrizen a und b
-    for i in range(1, s-1):
-        self.a[i, i-1] = self.edges[i-1].le/6
-        self.a[i, i] = (self.edges[i-1].le+self.edges[i].le)/3
-        self.a[i, i+1] = self.edges[i].le/6
-        self.b[i, 0] = (self.knots[i+1].y-self.knots[i].y)/self.edges[i].le-(self.knots[i].y-self.knots[i-1].y)/self.edges[i-1].le
-
-    #Löse das Lineare Gleichungssystem
-    self.m = np.linalg.solve(self.a,self.b)
-    
-    #self.m ist die Momentenmatrix
       
 
 d = OSMRailExport()
