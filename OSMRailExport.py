@@ -17,9 +17,36 @@ api = Api()
 # lon = geographische Länge -- x
 # lat = geographische Breite -- y
 
-class OSMRailExport():
+class RailNetwork:
     def __init__(self):
+        self.edges = list()
+        self.nodes = dict()
+
         self.earth_R = 6371001
+
+    def bbxBuilder(self, startNodeID, endNodeID, a = 0.1):
+        sn = self._getNode(startNodeID)
+        en = self._getNode(endNodeID)
+
+        if sn==False or en==False:
+            return "Fehler bei den angegeben Nodes"
+
+        # Zum Export der Daten aus OSM wird die Overpass Api benutzt
+        # Dazu wird um die beiden Nodes eine Bounderybox gelegt
+        # Diese ist so groß, dass sie die beide Punkte umfasst und
+        # in jede Richtung um a*c erweitert ist. a ist dabei ein Faktor.
+        # c ist der Koordinaten-Abstand der beiden Nodes
+        c = math.sqrt((sn.lon()-en.lon())**2+(sn.lat()-en.lat())**2)
+
+        # bbx = [lon_min, lat_min, lon_max, lat_max]
+        bbx = []
+
+        bbx.append(min(sn.lat(), en.lat()) - a*c)
+        bbx.append(min(sn.lon(), en.lon()) - a*c)
+        bbx.append(max(sn.lat(), en.lat()) + a*c)        
+        bbx.append(max(sn.lon(), en.lon()) + a*c)
+        
+        return bbx
 
     def downloadBoundingBox(self, bbx=[]):
         # bbx = [lon_min, lat_min, lon_max, lat_max]
@@ -38,9 +65,6 @@ class OSMRailExport():
         except:
             print("Fehler bei der Ausführung der Overpass-Abfrage")
 
-        # Neue Instanz eines railNetworks:
-        r = railNetwork()
-
         # Höhendaten
         try:
             debug("Lade Höhendaten...")
@@ -54,21 +78,24 @@ class OSMRailExport():
         for w in bbx_rail.ways():
             previousNode = None
             for n in w.nodes():
-                # Erzeuge neue Instanz eines nodes()
-                nw = node(n.id())
-                # Befülle diese mit Daten
-                nw.lon = n.lon()
-                nw.lat = n.lat()
-                nw.ele = ele_data.get_elevation(nw.lon, nw.lat)
+                if not n.id() in self.nodes:
+                    # Erzeuge neue Instanz eines nodes()
+                    nw = Node(n.id())
+                    # Befülle diese mit Daten
+                    nw.lon = n.lon()
+                    nw.lat = n.lat()
+                    nw.ele = ele_data.get_elevation(nw.lon, nw.lat)
 
-                nw.x, nw.y = self._lonlatInXY(bbx[0], bbx[1], nw.lon, nw.lat)
+                    nw.x, nw.y = self._lonlatInXY(bbx[0], bbx[1], nw.lon, nw.lat)
 
-                # Füge nw den RailNetwork hinzu:
-                r.nodes[nw.OSMId] = nw
+                    # Füge nw den RailNetwork hinzu:
+                    self.nodes[nw.OSMId] = nw
+                else:
+                    nw = self.nodes[n.id()]
 
                 if previousNode != None:
                     # Erzeuge eine Edge zwischen den aktuellen Node und dem vorherigen
-                    e = edge(nw, previousNode)
+                    e = Edge(nw, previousNode)
                     # Befülle ihn mit Daten aus dem übergeordneten Way
                     e.setSpeed(w.tag('maxspeed'))
                     if w.tag('bridge') == "yes":
@@ -81,61 +108,16 @@ class OSMRailExport():
                     previousNode.edges.append(e)
 
                     # Füge den e beim RailNetwork hinzu
-                    r.edges.append(e)
+                    self.edges.append(e)
 
                 #for e in nw.edges:
                 #    print(str(e.getNeighbor(nw).OSMId()))
                 previousNode = nw
 
-        debug("Es wurden " + str(len(r.nodes)) + " Nodes und " + str(len(r.edges)) + " Edges erstellt")
-
-        return r
+        debug("Es wurden " + str(len(self.nodes)) + " Nodes und " + str(len(self.edges)) + " Edges erstellt")
         
-    def routing(self, startNodeID, endNodeID):
-        sn = self._getNode(startNodeID)
-        en = self._getNode(endNodeID)
-
-        if sn==False or en==False:
-            return "Fehler bei den angegeben Nodes"
-
-        # Zum Export der Daten aus OSM wird die Overpass Api benutzt
-        # Dazu wird um die beiden Nodes eine Bounderybox gelegt
-        # Diese ist so groß, dass sie die beide Punkte umfasst und
-        # in jede Richtung um a*c erweitert ist. a ist dabei ein Faktor.
-        # c ist der Koordinaten-Abstand der beiden Nodes
-        c = math.sqrt((sn.lon()-en.lon())**2+(sn.lat()-en.lat())**2)
-        a = 0.1
-        bbx = []
-
-        bbx.append(min(sn.lat(), en.lat()) - a*c)
-        bbx.append(min(sn.lon(), en.lon()) - a*c)
-        bbx.append(max(sn.lat(), en.lat()) + a*c)        
-        bbx.append(max(sn.lon(), en.lon()) + a*c)
-        
-        r = self.downloadBoundingBox(bbx)
-
-        route = self._aStar(r, r.nodes[startNodeID], r.nodes[endNodeID])
-
-        return route#, route
-
-    def plotRoute(self, route, mode):
-        if mode == 1:
-            # XY-Darstellung
-            x = list()
-            y = list()
-            for p in route:
-                x.append(p.x)
-                y.append(p.y)
-
-            plt.plot(x, y)
-            plt.show()
-
-        elif mode == 2:
-            # Höhendarstellung
-            pass
-
     def _getNode(self, nodeID):
-        new = node(nodeID)        
+        new = Node(nodeID)        
         try:
             n = api.query('node/' + str(nodeID))
             #print(n.tags())
@@ -153,17 +135,26 @@ class OSMRailExport():
         xy.append(math.sin((lat_min-lat)/180*math.pi)*self.earth_R)
         return xy
 
-    def _aStar(self, railNetwork, startNode, endNode, maxSteps = 100):
+
+class Route():
+    def __init__(self, RailNetwork, startNodeID, endNodeID):
+        self._r = RailNetwork
+        self._startNode = self._r.nodes[startNodeID]
+        self._endNode = self._r.nodes[endNodeID]
+
+        self.nodes = list()
+
+    def _aStar(self, maxSteps = 1000):
         debug("Start A*")
         # Code copied from https://github.com/F6F/SimpleOsmRouter/blob/master/router/router.py and modified
         #exploredNodes = list() # in Wiki als closedList bezeichnet
         openlist = list() # in Wiki als openList bezeichnet
         #tmpNodes = list()
 
-        currentNode = startNode
+        currentNode = self._startNode
         openlist.append(currentNode)
 
-        while ((currentNode != endNode) & (len(openlist) > 0) & (maxSteps > 0)):
+        while ((currentNode != self._endNode) & (len(openlist) > 0) & (maxSteps > 0)):
             maxSteps -= 1
             currentNode = openlist[0]
             for i in openlist:
@@ -173,7 +164,7 @@ class OSMRailExport():
             
             debug("CurrentNode: " + str(currentNode.OSMId))
             openlist.remove(currentNode)
-            if currentNode == endNode:
+            if currentNode == self._endNode:
                 # Wenn das Ziel gefunden ist, verlasse die Schleife
                 debug("Ziel gefunden")
                 break
@@ -187,91 +178,42 @@ class OSMRailExport():
                     continue
                 successor.cameFrom = currentNode
                 successor.g = tentative_g
-                successor.f = tentative_g + calcDistance(successor, endNode)
+                successor.f = tentative_g + calcDistance(successor, self._endNode)
                 
                 if not successor in openlist:
                     openlist.append(successor)
 
         debug(currentNode.OSMId)
-        nowNode = endNode
-
-        route = list()
+        nowNode = self._endNode
         
         while nowNode.cameFrom != None:
-            print(nowNode.OSMId)
-            route.append(nowNode)
+            #print("https://www.openstreetmap.org/node/" + str(nowNode.OSMId))
+            self.nodes.append(nowNode)
             nowNode = nowNode.cameFrom
 
-        return route
-            
+        # Füge den startNode noch hinzu:
+        self.nodes.append(self._startNode)
 
+        # Reihenfolge der Liste umkehren, sodass der Start am Anfang steht
+        self.nodes.reverse()
+        
 
-class vector2d:
-    # Ähnlich zu https://docs.godotengine.org/en/stable/classes/class_vector2.html
-    def __init__(self, x, y):
-        self.x = float(x)
-        self.y = float(y)
-    def length(self):
-        return math.sqrt(self.x**2+self.y**2)
+    def plotRoute(self, mode):
+        if mode == 1:
+            # XY-Darstellung
+            x = list()
+            y = list()
+            for p in self.nodes:
+                x.append(p.x)
+                y.append(p.y)
 
-class node:
-    def __init__(self, ID):
-        self.OSMId = ID
-        self.lon = 0
-        self.lat = 0
-        self.ele = 0
-        self.x = 0
-        self.y = 0
-        self.edges = list()
+            plt.plot(x, y)
+            plt.show()
 
-        # Attribute für A*
-        self.cameFrom = None
-        self.g = 0.0
-        self.f = 0.0
-        self.explored = False
-        self.known = False
-    def getNeighbors(self):
-        # Gibt eine Liste aller benachbarten Knoten zurück
-        gn = list()
-        for e in self.edges:
-            gn.append(e.getNeighbor(self))
-        return gn
+        elif mode == 2:
+            # Höhendarstellung
+            pass
 
-
-class edge:
-    def __init__(self, node1, node2):
-        self._node1 = node1
-        self._node2 = node2
-        self._maxspeed = 0
-        self._length = 0.1
-        self.gradient = self._getGradient()
-        self.electrified  = False
-        self.tunnel = False
-        self.bridge = False
-
-        self.itp_h = abs(node2.x - node1.x)
-    def getNeighbor(self, origin):
-        if self._node1 == origin:
-            return self._node2
-        elif self._node2 == origin:
-            return self._node1
-        else:
-            return False
-    def setSpeed(self, speed):
-        self._maxspeed = speed
-    def getSpeed(self, speed):
-        return self._maxspeed
-    def _getGradient(self):
-        return (self._node1.ele - self._node2.ele) / self._length
-
-class railNetwork:
-    def __init__(self):
-        self.edges = list()
-        self.nodes = dict()
-    def add_edges(self, node):
-        self.edges.append(node)
-    def add_nodes(self, x, y):
-        self.nodes[x] = y
     def interpolate(self):
         #Die folgende Funktion interpoliert aus dem Streckenzug einen kubischen Spline
         #Siehe https://de.wikipedia.org/wiki/Spline-Interpolation#Der_kubische_C%C2%B2-Spline
@@ -302,6 +244,7 @@ class railNetwork:
     
         #self.m ist die Momentenmatrix
         return self.m
+    
     def bSpline(self):
         plist = list()
         for key in self.nodes:
@@ -321,26 +264,75 @@ class railNetwork:
         plt.axis([min(x)-1, max(x)+1, min(y)-1, max(y)+1])
         plt.title('B-Spline interpolation')
         plt.show()
-    def abstand(self):
-        l = list()
-        for e in self.edges:
-            a = math.sqrt((e._node1.x-e._node2.x)**2 + (e._node1.y-e._node2.y)**2)
-            l.append(a)
 
-        l.sort()
-        print(l)
+
+class Node:
+    def __init__(self, ID):
+        self.OSMId = ID
+        self.lon = 0
+        self.lat = 0
+        self.ele = 0
+        self.x = 0
+        self.y = 0
+        self.edges = list()
+
+        # Attribute für A*
+        self.cameFrom = None
+        self.g = 0.0
+        self.f = 0.0
+        self.explored = False
+        self.known = False
+    def getNeighbors(self):
+        # Gibt eine Liste aller benachbarten Knoten zurück
+        gn = list()
+        for e in self.edges:
+            gn.append(e.getNeighbor(self))
+        return gn
+
+
+class Edge:
+    def __init__(self, node1, node2):
+        self._node1 = node1
+        self._node2 = node2
+        self._maxspeed = 0
+        self._length = 0.1
+        self.gradient = self._getGradient()
+        self.electrified  = False
+        self.tunnel = False
+        self.bridge = False
+
+        self.itp_h = abs(node2.x - node1.x)
+    def getNeighbor(self, origin):
+        if self._node1 == origin:
+            return self._node2
+        elif self._node2 == origin:
+            return self._node1
+        else:
+            return False
+    def setSpeed(self, speed):
+        self._maxspeed = speed
+    def getSpeed(self, speed):
+        return self._maxspeed
+    def _getGradient(self):
+        return (self._node1.ele - self._node2.ele) / self._length
+
+
+
         
         
 def calcDistance(node1, node2):
     return math.sqrt((node1.x - node2.x)**2 + (node1.y - node2.y)**2)
 
 def debug(text):
-    debugLevel = 0
+    debugLevel = 1
     if debugLevel == 0:
         print(text)
         
 
       
 
-d = OSMRailExport()
-r = d.routing(389926882, 602027313)
+r = RailNetwork()
+bbx = r.bbxBuilder(389926882, 602027313)
+r.downloadBoundingBox(bbx)
+
+f = Route(r, 389926882, 602027313)
