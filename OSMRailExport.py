@@ -136,25 +136,36 @@ class RailNetwork:
         return xy
 
 
-class Route():
-    def __init__(self, RailNetwork, startNodeID, endNodeID):
+class Route:
+    def __init__(self, RailNetwork):
         self._r = RailNetwork
-        self._startNode = self._r.nodes[startNodeID]
-        self._endNode = self._r.nodes[endNodeID]
 
         self.nodes = list()
 
-    def _aStar(self, maxSteps = 1000):
+    def routing(self, nodes):
+        # nodes ist eine Liste von Wegpunkten auf der Route
+        # Prüfe ob jeder Node Teil des RailNetworks ist:
+        for n in nodes:
+            if not n in self._r.nodes:
+                print("Node " + str(n) + " ist nicht Teil des RailNetworks")
+
+        # Führe nacheinander den AStern-Algorithmus durch und füge die einzelnen Teile aneinander
+        for n in range(1, len(nodes)):
+            self.nodes += self._aStar(self._r.nodes[nodes[n-1]], self._r.nodes[nodes[n]])
+
+            
+
+    def _aStar(self, startNode, endNode, maxSteps = 1000):
         debug("Start A*")
         # Code copied from https://github.com/F6F/SimpleOsmRouter/blob/master/router/router.py and modified
         #exploredNodes = list() # in Wiki als closedList bezeichnet
         openlist = list() # in Wiki als openList bezeichnet
         #tmpNodes = list()
 
-        currentNode = self._startNode
+        currentNode = startNode
         openlist.append(currentNode)
 
-        while ((currentNode != self._endNode) & (len(openlist) > 0) & (maxSteps > 0)):
+        while ((currentNode != endNode) & (len(openlist) > 0) & (maxSteps > 0)):
             maxSteps -= 1
             currentNode = openlist[0]
             for i in openlist:
@@ -164,7 +175,7 @@ class Route():
             
             debug("CurrentNode: " + str(currentNode.OSMId))
             openlist.remove(currentNode)
-            if currentNode == self._endNode:
+            if currentNode == endNode:
                 # Wenn das Ziel gefunden ist, verlasse die Schleife
                 debug("Ziel gefunden")
                 break
@@ -178,24 +189,27 @@ class Route():
                     continue
                 successor.cameFrom = currentNode
                 successor.g = tentative_g
-                successor.f = tentative_g + calcDistance(successor, self._endNode)
+                successor.f = tentative_g + calcDistance(successor, endNode)
                 
                 if not successor in openlist:
                     openlist.append(successor)
 
         debug(currentNode.OSMId)
-        nowNode = self._endNode
+        nowNode = endNode
         
         while nowNode.cameFrom != None:
             #print("https://www.openstreetmap.org/node/" + str(nowNode.OSMId))
             self.nodes.append(nowNode)
             nowNode = nowNode.cameFrom
 
+        route = list()
         # Füge den startNode noch hinzu:
-        self.nodes.append(self._startNode)
+        route.append(startNode)
 
         # Reihenfolge der Liste umkehren, sodass der Start am Anfang steht
-        self.nodes.reverse()
+        route.reverse()
+
+        return route
         
 
     def plotRoute(self, mode):
@@ -335,4 +349,5 @@ r = RailNetwork()
 bbx = r.bbxBuilder(389926882, 602027313)
 r.downloadBoundingBox(bbx)
 
-f = Route(r, 389926882, 602027313)
+f = Route(r)
+route = f.routing([389926882, 602027313])
