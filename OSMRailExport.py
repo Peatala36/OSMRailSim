@@ -14,8 +14,8 @@ from scipy import interpolate
 overpass = Overpass()
 api = Api()
 
-# lon = geographische Länge -- x
-# lat = geographische Breite -- y
+# lon = geographische Länge  -- x -- München liegt auf 11°
+# lat = geographische Breite -- y -- München liegt auf 48°
 
 class RailNetwork:
     def __init__(self):
@@ -38,7 +38,7 @@ class RailNetwork:
         # c ist der Koordinaten-Abstand der beiden Nodes
         c = math.sqrt((sn.lon()-en.lon())**2+(sn.lat()-en.lat())**2)
 
-        # bbx = [lon_min, lat_min, lon_max, lat_max]
+        # bbx = [lat_min, lon_min, lat_max, lon_max]
         bbx = []
 
         bbx.append(min(sn.lat(), en.lat()) - a*c)
@@ -49,8 +49,7 @@ class RailNetwork:
         return bbx
 
     def downloadBoundingBox(self, bbx=[]):
-        # bbx = [lon_min, lat_min, lon_max, lat_max]
-
+        # bbx = [lat_min, lon_min, lat_max, lon_max]
         debug("Download Data with Bounding Box")
         
         # Erzeuge Query für Overpass Api
@@ -86,7 +85,7 @@ class RailNetwork:
                     nw.lat = n.lat()
                     nw.ele = ele_data.get_elevation(nw.lon, nw.lat)
 
-                    nw.x, nw.y = self._lonlatInXY(bbx[0], bbx[1], nw.lon, nw.lat)
+                    nw.x, nw.y = self._lonlatInXY(bbx[1], bbx[0], nw.lon, nw.lat)
 
                     # Füge nw den RailNetwork hinzu:
                     self.nodes[nw.OSMId] = nw
@@ -116,43 +115,24 @@ class RailNetwork:
 
         debug("Es wurden " + str(len(self.nodes)) + " Nodes und " + str(len(self.edges)) + " Edges erstellt")
         
-    def _getNode(self, nodeID):
-        new = Node(nodeID)        
-        try:
-            n = api.query('node/' + str(nodeID))
-            #print(n.tags())
-            new.lon = n.lon
-            new.lat = n.lat
-            return new
-        except:
-            print("Fehler mit " + str(node))
-            return False
-    
-    def _lonlatInXY(self, lon_min, lat_min, lon, lat):
-        # Wandle die Punkte aus einem  in ein lokales X-Y-Koordinatensystem um
-        xy = list()
-        xy.append(math.sin((lon_min-lon)/180*math.pi)*math.cos(lat_min/180*math.pi)*self.earth_R)
-        xy.append(math.sin((lat_min-lat)/180*math.pi)*self.earth_R)
-        return xy
-
-
-class Route:
-    def __init__(self, RailNetwork):
-        self._r = RailNetwork
-
-        self.nodes = list()
-
-    def routing(self, nodes):
-        # nodes ist eine Liste von Wegpunkten auf der Route
+    def routing(self, waypoints):
+        # waypoints ist eine Liste von Wegpunkten auf der Route
         # Prüfe ob jeder Node Teil des RailNetworks ist:
-        for n in nodes:
-            if not n in self._r.nodes:
+        for n in waypoints:
+            if not n in self.nodes:
                 print("Node " + str(n) + " ist nicht Teil des RailNetworks")
 
-        # Führe nacheinander den AStern-Algorithmus durch und füge die einzelnen Teile aneinander
-        for n in range(1, len(nodes)):
-            self.nodes += self._aStar(self._r.nodes[nodes[n-1]], self._r.nodes[nodes[n]])
+        # Neu Instanz einer Route
+        r = Route()
 
+        r.startNode = waypoints[0]
+        r.endNode = waypoints[-1]
+        
+        # Führe nacheinander den AStern-Algorithmus durch und füge die einzelnen Teile aneinander
+        for n in range(1, len(waypoints)):
+            r.nodes += self._aStar(self.nodes[waypoints[n-1]], self.nodes[waypoints[n]])
+
+        return r
             
 
     def _aStar(self, startNode, endNode, maxSteps = 1000):
@@ -196,13 +176,15 @@ class Route:
 
         debug(currentNode.OSMId)
         nowNode = endNode
+
+        route = list()
         
         while nowNode.cameFrom != None:
             #print("https://www.openstreetmap.org/node/" + str(nowNode.OSMId))
-            self.nodes.append(nowNode)
+            route.append(nowNode)
             nowNode = nowNode.cameFrom
 
-        route = list()
+        
         # Füge den startNode noch hinzu:
         route.append(startNode)
 
@@ -210,6 +192,34 @@ class Route:
         route.reverse()
 
         return route
+
+    def _getNode(self, nodeID):
+        new = Node(nodeID)        
+        try:
+            n = api.query('node/' + str(nodeID))
+            #print(n.tags())
+            new.lon = n.lon
+            new.lat = n.lat
+            return new
+        except:
+            print("Fehler mit " + str(node))
+            return False
+    
+    def _lonlatInXY(self, lon_min, lat_min, lon, lat):
+        # Wandle die Punkte aus einem  in ein lokales X-Y-Koordinatensystem um
+        xy = list()
+        xy.append(math.sin((lon_min-lon)/180*math.pi)*math.cos(lat_min/180*math.pi)*self.earth_R)
+        xy.append(math.sin((lat_min-lat)/180*math.pi)*self.earth_R)
+        return xy
+
+
+class Route:
+    def __init__(self):
+        self._parentRailNetwork = ""
+        self.startNode = ""
+        self.endNode = ""
+
+        self.nodes = list()
         
 
     def plotRoute(self, mode):
@@ -227,57 +237,73 @@ class Route:
         elif mode == 2:
             # Höhendarstellung
             pass
-
-    def interpolate(self):
-        #Die folgende Funktion interpoliert aus dem Streckenzug einen kubischen Spline
-        #Siehe https://de.wikipedia.org/wiki/Spline-Interpolation#Der_kubische_C%C2%B2-Spline
-        
-        s = len(self.nodes)
-        #Koeffizientenmatrix a
-        self.a = np.zeros((s,s))
-        #Rechte Seite des Linearen Gleichungssystems b
-        self.b = np.zeros((s,1))
-
-        #Setze natürliche Randbedingungen
-        self.a[0,0]=1
-        self.a[s-1,s-1]=1
-
-        print(self.nodes)
-        
-        #Befülle die Matrizen a und b
-        for i in range(1, s-1):
-            self.a[i, i-1] = self.edges[i-1].itp_h/6
-            self.a[i, i] = (self.edges[i-1].itp_h+self.edges[i].itp_h)/3
-            self.a[i, i+1] = self.edges[i].itp_h/6
-           
-            
-            #self.b[i, 0] = (self.nodes[i+1].y-self.nodes[i].y)/self.edges[i].itp_h-(self.nodes[i].y-self.nodes[i-1].y)/self.edges[i-1].itp_h
-
-        #Löse das Lineare Gleichungssystem
-        self.m = np.linalg.solve(self.a,self.b)
-    
-        #self.m ist die Momentenmatrix
-        return self.m
     
     def bSpline(self):
         plist = list()
-        for key in self.nodes:
-            plist.append((self.nodes[key].x, self.nodes[key].y))
+        l = (len(self.nodes)-1) * 3
+        
+        for n in self.nodes:
+            plist.append((n.x, n.y))
 
         ctr=np.array(plist)
         x=ctr[:,0]
         y=ctr[:,1]
 
-        tck,u = interpolate.splprep([x,y],k=3,s=0)
-        u=np.linspace(0,1,num=1000,endpoint=True)
-        out = interpolate.splev(u,tck)
+        tck,u = interpolate.splprep([x,y], k=3, s=0)
+        u=np.linspace(0, 1, num=l, endpoint=True)
+        out = interpolate.splev(u, tck)
 
-        plt.figure()
-        plt.plot(x, y, 'ro', out[0], out[1], 'b')
-        plt.legend(['Points', 'Interpolated B-spline', 'True'],loc='best')
-        plt.axis([min(x)-1, max(x)+1, min(y)-1, max(y)+1])
-        plt.title('B-Spline interpolation')
-        plt.show()
+        
+
+        #plt.figure()
+        #plt.plot(x, y, 'ro', out[0], out[1], 'b')
+        #plt.legend(['Points', 'Interpolated B-spline', 'True'],loc='best')
+        #plt.axis([min(x)-1, max(x)+1, min(y)-1, max(y)+1])
+        #plt.title('B-Spline interpolation')
+        #plt.show()
+
+        return out
+
+    def _uvInXYZ(self, u, v):
+        x = 2*u/(u**2+v**2+1)
+        y = 2*v/(u**2+v**2+1)
+        z = (u**2+v**2-1)/(u**2+v**2+1)
+
+        return x, y, z
+
+    def minimize_z_error(self, x, y, z):
+        A = np.c_[x, y, np.ones(x.shape)]
+        C, resid, rank, singular_values = np.linalg.lstsq(A, z, rcond=None)
+
+        return C[0], C[1], -1., -C[2]
+
+    def estimateRadius(self, b):
+        # Siehe https://stackoverflow.com/questions/35118419/wrong-result-for-best-fit-plane-to-set-of-points-with-scipy-linalg-lstsq
+        U = b[0]
+        V = b[1]
+        
+        x = list()
+        y = list()
+        z = list()
+
+        for i in range(len(U)):
+            xyz = self._uvInXYZ(U[i], V[i])
+            x.append(xyz[0])
+            y.append(xyz[1])
+            z.append(xyz[2])
+
+        x = np.array(x)
+        y = np.array(y)
+        z = np.array(z)
+
+        A, B, C, D = self.minimize_z_error(x, y, z)
+
+        radius = math.sqrt(A**2 +  B**2 + C**2 - D**2)/abs(C-D)
+
+        return radius
+    
+    def exportCSV(self):
+        pass
 
 
 class Node:
@@ -341,13 +367,18 @@ def debug(text):
     debugLevel = 1
     if debugLevel == 0:
         print(text)
-        
+
+
 
       
 
 r = RailNetwork()
-bbx = r.bbxBuilder(389926882, 602027313)
+#bbx = r.bbxBuilder(389926882, 602027313)
+bbx = r.bbxBuilder(389903144, 1201319848)
 r.downloadBoundingBox(bbx)
 
-f = Route(r)
-route = f.routing([389926882, 602027313])
+#f = r.routing([389926882, 602027313])
+f = r.routing([389903144, 1201319848])
+b = f.bSpline()
+
+print(f.estimateRadius(b))
