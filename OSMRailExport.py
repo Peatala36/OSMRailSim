@@ -221,6 +221,9 @@ class Route:
 
         self.nodes = list()
         self.b_spline = list()
+
+        self.center = list()
+        self.radius = 0
         
 
     def plotRoute(self, mode=1):
@@ -233,7 +236,12 @@ class Route:
                 y.append(p.y)
             
             plt.figure()
-            plt.plot(x, y, 'ro', b_spline[0], b_spline[1], 'b')
+            
+            fig, ax = plt.subplots()
+            ax.add_patch(plt.Circle(self.center, self.radius, fill=False))
+            ax.plot()
+            
+            plt.plot(x, y, 'ro', self.b_spline[0], self.b_spline[1], 'b')
             plt.legend(['Points', 'Interpolated B-spline', 'True'],loc='best')
             plt.axis([min(x)-1, max(x)+1, min(y)-1, max(y)+1])
             plt.title('B-Spline interpolation')
@@ -265,17 +273,14 @@ class Route:
 
         return x, y, z
 
-    def minimize_z_error(self, x, y, z):
+    def _minimize_z_error(self, x, y, z):
         A = np.c_[x, y, np.ones(x.shape)]
         C, resid, rank, singular_values = np.linalg.lstsq(A, z, rcond=None)
-
+        
         return C[0], C[1], -1., -C[2]
 
-    def estimateRadius(self):
+    def _points_2_radius(self, U, V):
         # Siehe https://stackoverflow.com/questions/35118419/wrong-result-for-best-fit-plane-to-set-of-points-with-scipy-linalg-lstsq
-        U = b_spline[0]
-        V = b_spline[1]
-        
         x = list()
         y = list()
         z = list()
@@ -290,12 +295,57 @@ class Route:
         y = np.array(y)
         z = np.array(z)
 
-        A, B, C, D = self.minimize_z_error(x, y, z)
+        A, B, C, D = self._minimize_z_error(x, y, z)
 
         radius = math.sqrt(A**2 +  B**2 + C**2 - D**2)/abs(C-D)
 
-        return radius
+        return radius, [A/(D-C), B/(D-C)]
+
+    def _dist_2_plane(self, x, y, z, a, b, c, d):
+        """Berechnet den Abstand eines Punktes zu einer Ebene"""
+        return abs(a*x + b*y + c*z - d) / np.sqrt(a**2 + b**2 + c**2)
+
+    def _abstand(self, p1, p2):
+        return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2 )
     
+    def estimateCurveRadius(self):
+        ab = 0
+        n = 0
+        m = 5
+        break_flag = False
+        while True:
+            while True:   
+                start_u = self.b_spline[0][n:m]
+                start_v = self.b_spline[1][n:m]
+
+                self.radius, self.center = self._points_2_radius(start_u, start_v)
+                for i in range(n, m):
+                    p = [self.b_spline[0][i], self.b_spline[1][i]]
+                    ab = abs(self._abstand(p, self.center) - self.radius)
+                
+                    #print(ab)
+                    if ab > 1:
+                        break_flag = True
+                        break
+
+                if break_flag: break
+                #print("---------------")
+                m += 1
+                if m > len(self.b_spline[0]): break
+
+            #print("Von " + str(n) + " bis " + str(m))
+            print("Radius= " + str(self.radius))
+            #print(self.center)
+
+            n = m
+            m += 5
+            break_flag = False
+
+            if m > len(self.b_spline[0]): break
+        #self.plotRoute()
+        
+
+        
     def exportCSV(self):
         pass
 
@@ -364,12 +414,11 @@ def debug(text):
       
 
 r = RailNetwork()
-#bbx = r.bbxBuilder(389926882, 602027313)
-bbx = r.bbxBuilder(389903144, 1201319848)
+bbx = r.bbxBuilder(389926882, 602027313)
+#bbx = r.bbxBuilder(389903144, 1201319848)
 r.downloadBoundingBox(bbx)
 
-#f = r.routing([389926882, 602027313])
-f = r.routing([389903144, 1201319848])
+f = r.routing([389926882, 602027313])
+#f = r.routing([389903144, 1201319848])
 f.bSpline()
-
-print(f.estimateRadius())
+f.estimateCurveRadius()
