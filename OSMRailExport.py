@@ -48,7 +48,7 @@ class RailNetwork:
         
         return bbx
 
-    def downloadBoundingBox(self, bbx=[]):
+    def downloadBoundingBox(self, bbx):
         # bbx = [lat_min, lon_min, lat_max, lon_max]
         debug("Download Data with Bounding Box")
         
@@ -220,9 +220,10 @@ class Route:
         self.endNode = ""
 
         self.nodes = list()
+        self.b_spline = list()
         
 
-    def plotRoute(self, mode):
+    def plotRoute(self, mode=1):
         if mode == 1:
             # XY-Darstellung
             x = list()
@@ -230,8 +231,12 @@ class Route:
             for p in self.nodes:
                 x.append(p.x)
                 y.append(p.y)
-
-            plt.plot(x, y)
+            
+            plt.figure()
+            plt.plot(x, y, 'ro', b_spline[0], b_spline[1], 'b')
+            plt.legend(['Points', 'Interpolated B-spline', 'True'],loc='best')
+            plt.axis([min(x)-1, max(x)+1, min(y)-1, max(y)+1])
+            plt.title('B-Spline interpolation')
             plt.show()
 
         elif mode == 2:
@@ -251,18 +256,7 @@ class Route:
 
         tck,u = interpolate.splprep([x,y], k=3, s=0)
         u=np.linspace(0, 1, num=l, endpoint=True)
-        out = interpolate.splev(u, tck)
-
-        
-
-        #plt.figure()
-        #plt.plot(x, y, 'ro', out[0], out[1], 'b')
-        #plt.legend(['Points', 'Interpolated B-spline', 'True'],loc='best')
-        #plt.axis([min(x)-1, max(x)+1, min(y)-1, max(y)+1])
-        #plt.title('B-Spline interpolation')
-        #plt.show()
-
-        return out
+        self.b_spline = interpolate.splev(u, tck)
 
     def _uvInXYZ(self, u, v):
         x = 2*u/(u**2+v**2+1)
@@ -277,10 +271,10 @@ class Route:
 
         return C[0], C[1], -1., -C[2]
 
-    def estimateRadius(self, b):
+    def estimateRadius(self):
         # Siehe https://stackoverflow.com/questions/35118419/wrong-result-for-best-fit-plane-to-set-of-points-with-scipy-linalg-lstsq
-        U = b[0]
-        V = b[1]
+        U = b_spline[0]
+        V = b_spline[1]
         
         x = list()
         y = list()
@@ -356,9 +350,6 @@ class Edge:
     def _getGradient(self):
         return (self._node1.ele - self._node2.ele) / self._length
 
-
-
-        
         
 def calcDistance(node1, node2):
     return math.sqrt((node1.x - node2.x)**2 + (node1.y - node2.y)**2)
@@ -379,6 +370,6 @@ r.downloadBoundingBox(bbx)
 
 #f = r.routing([389926882, 602027313])
 f = r.routing([389903144, 1201319848])
-b = f.bSpline()
+f.bSpline()
 
 print(f.estimateRadius(b))
