@@ -5,6 +5,7 @@ from OSMPythonTools.overpass import Overpass
 
 import math
 import srtm
+import csv
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import interpolate
@@ -19,7 +20,7 @@ api = Api()
 
 class RailNetwork:
     def __init__(self):
-        self.edges = list()
+        self.edges = dict()
         self.nodes = dict()
 
         self.earth_R = 6371001
@@ -101,13 +102,15 @@ class RailNetwork:
                         e.bridge = True
                     if w.tag('tunnel') == "yes":
                         e.tunnel = True
+                    if w.tag('electrified') != "no":
+                        e.electrified = True
 
                     # Füge den e den beiden Nodes hinzu
                     nw.edges.append(e)
                     previousNode.edges.append(e)
 
                     # Füge den e beim RailNetwork hinzu
-                    self.edges.append(e)
+                    self.edges[nodesToEdgeID(nw, previousNode)] = e
 
                 #for e in nw.edges:
                 #    print(str(e.getNeighbor(nw).OSMId()))
@@ -132,6 +135,11 @@ class RailNetwork:
         for n in range(1, len(waypoints)):
             r.nodes += self._aStar(self.nodes[waypoints[n-1]], self.nodes[waypoints[n]])
 
+        # Füge auch alle betroffenen Edges der Route hinzu:
+        for n in range(1, len(r.nodes)):
+            ID = nodesToEdgeID(r.nodes[n-1], r.nodes[n])
+            r.edges[ID] = self.edges[ID]
+        
         return r
             
 
@@ -208,8 +216,8 @@ class RailNetwork:
     def _lonlatInXY(self, lon_min, lat_min, lon, lat):
         # Wandle die Punkte aus einem  in ein lokales X-Y-Koordinatensystem um
         xy = list()
-        xy.append(math.sin((lon_min-lon)/180*math.pi)*math.cos(lat_min/180*math.pi)*self.earth_R)
-        xy.append(math.sin((lat_min-lat)/180*math.pi)*self.earth_R)
+        xy.append(round(math.sin((lon_min-lon)/180*math.pi)*math.cos(lat_min/180*math.pi)*self.earth_R, 2))
+        xy.append(round(math.sin((lat_min-lat)/180*math.pi)*self.earth_R, 2))
         return xy
 
 
@@ -220,10 +228,14 @@ class Route:
         self.endNode = ""
 
         self.nodes = list()
+        self.edges = dict()
         self.b_spline = list()
 
         self.center = list()
         self.radius = 0
+
+        self.maxRowCount = 1000000
+        self.zwischenPunkte = 3
         
 
     def plotRoute(self, mode=1):
@@ -253,7 +265,6 @@ class Route:
     
     def bSpline(self):
         plist = list()
-        l = (len(self.nodes)-1) * 3
         
         for n in self.nodes:
             plist.append((n.x, n.y))
@@ -262,9 +273,23 @@ class Route:
         x=ctr[:,0]
         y=ctr[:,1]
 
+        # Interpoliere B-Spline
         tck,u = interpolate.splprep([x,y], k=3, s=0)
-        u=np.linspace(0, 1, num=l, endpoint=True)
-        self.b_spline = interpolate.splev(u, tck)
+
+        # u ist eine Liste [0:1] welche die Positionen der nodes auf dem B-Spline widergibt
+        # Mit der folgenden Funktion werden self.zwischenPunkte jeweils gleichmäßig verteilte Zwischenpunkte eingefügt
+        u2 = list()
+        u2.append(u[0])
+        for i in range(1, len(u)):
+            for j in range(1, self.zwischenPunkte+2):
+                u2.append(round(u[i-1]+(u[i]-u[i-1])*j/(self.zwischenPunkte+1), 8))
+
+        # Berechne die Punktkoordinaten auf dem B-Spline an den Positionen u2
+        self.b_spline = interpolate.splev(u2, tck)
+
+        # Rund die Ergebnisse auf zwei Nachkommastellen
+        self.b_spline[0] = self.b_spline[0].round(2)
+        self.b_spline[1] = self.b_spline[1].round(2)
 
     def _uvInXYZ(self, u, v):
         x = 2*u/(u**2+v**2+1)
@@ -300,10 +325,6 @@ class Route:
         radius = math.sqrt(A**2 +  B**2 + C**2 - D**2)/abs(C-D)
 
         return radius, [A/(D-C), B/(D-C)]
-
-    def _dist_2_plane(self, x, y, z, a, b, c, d):
-        """Berechnet den Abstand eines Punktes zu einer Ebene"""
-        return abs(a*x + b*y + c*z - d) / np.sqrt(a**2 + b**2 + c**2)
 
     def _abstand(self, p1, p2):
         return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2 )
@@ -343,11 +364,47 @@ class Route:
 
             if m > len(self.b_spline[0]): break
         #self.plotRoute()
-        
 
+    def estimateRadiusBetween2Nodes(self):
+        n = 0
+        m = self.zwischenPunkte + 2
+       
+        for i in range(1, len(self.nodes)):
+            r, c = self._points_2_radius(self.b_spline[0][n:m], self.b_spline[1][n:m])
+            
+            e = self.edges[nodesToEdgeID(self.nodes[i-1], self.nodes[i])]
+            e.radius = round(r, 1)
+            e.length = self._calcDist(self.b_spline[0][n:m], self.b_spline[1][n:m])
+            e.gradient = e._getGradient()
+            
+            n = m-1
+            m += self.zwischenPunkte + 1
+            
+
+    def _calcDist(self, x, y):
+        summe = 0
+        for i in range(1, len(x)):
+            summe += math.sqrt((x[i-1] - x[i])**2 + (y[i-1] - y[i])**2)
+
+        return round(summe, 1)
         
     def exportCSV(self):
-        pass
+        counter = 0
+        weg = 0
+
+        with open("out.csv", "w") as out:
+            cw = csv.writer(out, delimiter=";", lineterminator="\n", quotechar='"')
+            cw.writerow(["Weg [km]", "Länge [m]", "Geschwindigkeit [km/h]", "Neigung [0/00]", \
+                         "Brücke [Ja/Nein]", "Tunnel [Ja/Nein]", "Elektfiziert [Ja/Nein]"])
+            for k in self.edges:
+                e = self.edges[k]
+                counter += 1
+                if counter > self.maxRowCount:
+                    print("Maximale Zeilenzahl erreicht! Abbruch")
+                    break
+                cw.writerow([round(weg, 3), e.length, e.getSpeed(), e.gradient, e.bridge, e.tunnel, e.electrified])
+                weg += e.length / 1000
+                
 
 
 class Node:
@@ -378,9 +435,11 @@ class Edge:
     def __init__(self, node1, node2):
         self._node1 = node1
         self._node2 = node2
+        self._edgeID = nodesToEdgeID(node1, node2)
         self._maxspeed = 0
-        self._length = 0.1
-        self.gradient = self._getGradient()
+        self.length = 0.1
+        self.radius = 0
+        self.gradient = 0
         self.electrified  = False
         self.tunnel = False
         self.bridge = False
@@ -395,30 +454,36 @@ class Edge:
             return False
     def setSpeed(self, speed):
         self._maxspeed = speed
-    def getSpeed(self, speed):
+    def getSpeed(self):
         return self._maxspeed
     def _getGradient(self):
-        return (self._node1.ele - self._node2.ele) / self._length
+        return round((self._node1.ele - self._node2.ele) / self.length * 1000, 1)
 
         
 def calcDistance(node1, node2):
-    return math.sqrt((node1.x - node2.x)**2 + (node1.y - node2.y)**2)
+    return round(math.sqrt((node1.x - node2.x)**2 + (node1.y - node2.y)**2), 2)
 
 def debug(text):
     debugLevel = 1
     if debugLevel == 0:
         print(text)
 
+def nodesToEdgeID(node1, node2):
+    return str(min(node1.OSMId, node2.OSMId)) + "," + str(max(node1.OSMId, node2.OSMId))
 
+def EdgeIdToNodes(edgeID):
+    return edgeID.split(",")
+    
 
       
 
 r = RailNetwork()
-bbx = r.bbxBuilder(389926882, 602027313)
+bbx = r.bbxBuilder(2991396848, 389926882)
 #bbx = r.bbxBuilder(389903144, 1201319848)
 r.downloadBoundingBox(bbx)
 
-f = r.routing([389926882, 602027313])
+f = r.routing([2991396848, 389926882])
 #f = r.routing([389903144, 1201319848])
 f.bSpline()
-f.estimateCurveRadius()
+f.estimateRadiusBetween2Nodes()
+
