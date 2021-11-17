@@ -8,10 +8,12 @@ import json
     
 class Trains:
     def __init__(self):
-        self.dictOfTrains = dict()
+        self.dictOfTrainsets = dict()
+        self.dictOfVehicles = dict()
     def __iter__(self):
         return iter(self.dictOfTrains.values())
     def readVehicleDataFromFile(self, path):
+        # Lese Datei ein
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
@@ -19,23 +21,24 @@ class Trains:
             print("Datei konnte nicht geladen werden")
             return
 
-        try:
-            for i in data["trains"]:
-                t = Train(i['trainID'])
-                for j in i['vehicles']:
-                    v = Vehicle(j['name'])
-                    for a in j:
-                        if hasattr(v, a):
-                            setattr(v, a, j[a])
-                    t.vehicles.append(v)
-                self.dictOfTrains[i['trainID']] = t
-                    
-        except:
-            print("Fehler beim lesen der Datei")
+        # Erzeuge die Vehicle-Objekte
+        for i in data["vehicles"]:
+            v = Vehicle(i['ID'])
+            for a in i:
+                if hasattr(v, a):
+                    setattr(v, a, i[a])
+            self.dictOfVehicles[i['ID']] = v
+
+        # Erzeuge die Trainset-Objekte
+        for i in data["trainsets"]:
+            t = Trainset(i['trainID'])
+            for j in i['vehicles']:
+                t.vehicles.append(self.dictOfVehicles[j])
+            self.dictOfTrainsets[i['trainID']] = t
 
 
 #Klasse für einen Zug
-class Train:
+class Trainset:
     def __init__(self, trainID):
         self.trainID = trainID
         self.vehicles = list()
@@ -74,8 +77,9 @@ class Train:
 
 #Klasse für Fahrzeuge
 class Vehicle:
-    def __init__(self, name):
-        self.name = name
+    def __init__(self, ID):
+        self.ID = ID
+        self.name = ""
         self.typ = ""   
         self.numberDrivenAxles = 0
         self.length = 0
@@ -106,3 +110,6 @@ class Vehicle:
             return self.max_tractiveForce
         else:
             return 0
+
+t = Trains()
+t.readVehicleDataFromFile('TrainsData.json')
