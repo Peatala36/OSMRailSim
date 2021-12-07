@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>798</width>
+    <height>581</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>OSMRailSim</string>
+  </property>
+  <property name="autoFillBackground">
+   <bool>false</bool>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QSplitter" name="splitter">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <widget class="QGroupBox" name="groupBox">
+       <property name="minimumSize">
+        <size>
+         <width>120</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>350</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="title">
+        <string>Eigenschaften</string>
+       </property>
+      </widget>
+      <widget class="QTabWidget" name="tabWidget">
+       <property name="currentIndex">
+        <number>0</number>
+       </property>
+       <widget class="QWidget" name="Lageplan">
+        <attribute name="title">
+         <string>Lageplan</string>
+        </attribute>
+        <layout class="QHBoxLayout" name="horizontalLayout">
+         <item>
+          <widget class="QGraphicsView" name="mainView"/>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="Hoehenplan">
+        <attribute name="title">
+         <string>Höhenplan</string>
+        </attribute>
+       </widget>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>798</width>
+     <height>29</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuDatei">
+    <property name="title">
+     <string>Datei</string>
+    </property>
+    <addaction name="btnNeu"/>
+    <addaction name="btnOpen"/>
+    <addaction name="separator"/>
+    <addaction name="btnSpeichern"/>
+    <addaction name="btnSpeichernUnter"/>
+    <addaction name="separator"/>
+    <addaction name="btnSchliessen"/>
+    <addaction name="separator"/>
+    <addaction name="btnBeenden"/>
+   </widget>
+   <widget class="QMenu" name="menuBearbeiten">
+    <property name="title">
+     <string>Bearbeiten</string>
+    </property>
+   </widget>
+   <widget class="QMenu" name="menuAnsicht">
+    <property name="title">
+     <string>Ansicht</string>
+    </property>
+    <addaction name="btnZoomIn"/>
+    <addaction name="btnZoomOut"/>
+    <addaction name="btnGesamtansicht"/>
+   </widget>
+   <widget class="QMenu" name="menuWerkzeuge">
+    <property name="title">
+     <string>Werkzeuge</string>
+    </property>
+    <widget class="QMenu" name="menuDetailieren">
+     <property name="title">
+      <string>Detailieren</string>
+     </property>
+     <addaction name="actionSignal_setzen"/>
+     <addaction name="actionGleisdefinition"/>
+    </widget>
+    <addaction name="actionMessen"/>
+    <addaction name="actionRouter"/>
+    <addaction name="actionEditieren"/>
+    <addaction name="menuDetailieren"/>
+   </widget>
+   <widget class="QMenu" name="menuHilfe">
+    <property name="title">
+     <string>Hilfe</string>
+    </property>
+   </widget>
+   <addaction name="menuDatei"/>
+   <addaction name="menuBearbeiten"/>
+   <addaction name="menuAnsicht"/>
+   <addaction name="menuWerkzeuge"/>
+   <addaction name="menuHilfe"/>
+  </widget>
+  <widget class="QToolBar" name="toolBar">
+   <property name="windowTitle">
+    <string>toolBar</string>
+   </property>
+   <attribute name="toolBarArea">
+    <enum>TopToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>false</bool>
+   </attribute>
+   <addaction name="btnNeu"/>
+   <addaction name="btnOpen"/>
+   <addaction name="btnSpeichern"/>
+   <addaction name="separator"/>
+   <addaction name="btnZoomIn"/>
+   <addaction name="btnZoomOut"/>
+  </widget>
+  <widget class="QStatusBar" name="statusBar"/>
+  <action name="btnNeu">
+   <property name="text">
+    <string>Neu</string>
+   </property>
+   <property name="toolTip">
+    <string>Neu</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+N</string>
+   </property>
+  </action>
+  <action name="btnOpen">
+   <property name="text">
+    <string>Öffnen</string>
+   </property>
+  </action>
+  <action name="btnSpeichern">
+   <property name="text">
+    <string>Speichern</string>
+   </property>
+  </action>
+  <action name="btnSpeichernUnter">
+   <property name="text">
+    <string>Speichern unter...</string>
+   </property>
+  </action>
+  <action name="btnSchliessen">
+   <property name="text">
+    <string>Schließen</string>
+   </property>
+  </action>
+  <action name="btnBeenden">
+   <property name="text">
+    <string>Beenden</string>
+   </property>
+  </action>
+  <action name="btnZoomIn">
+   <property name="text">
+    <string>Zoom In</string>
+   </property>
+  </action>
+  <action name="btnZoomOut">
+   <property name="text">
+    <string>Zoom out</string>
+   </property>
+  </action>
+  <action name="btnGesamtansicht">
+   <property name="text">
+    <string>Gesamtansicht</string>
+   </property>
+  </action>
+  <action name="actionMessen">
+   <property name="text">
+    <string>Messen</string>
+   </property>
+  </action>
+  <action name="actionRouter">
+   <property name="text">
+    <string>Router</string>
+   </property>
+  </action>
+  <action name="actionEditieren">
+   <property name="text">
+    <string>Editieren</string>
+   </property>
+  </action>
+  <action name="actionSignal_setzen">
+   <property name="text">
+    <string>Signal setzen</string>
+   </property>
+  </action>
+  <action name="actionGleisdefinition">
+   <property name="text">
+    <string>Gleisdefinition</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
