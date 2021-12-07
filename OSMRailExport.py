@@ -1,4 +1,4 @@
-#Import wichtige Bibliotheken
+#Import wichtiger Bibliotheken
 from OSMPythonTools.api import Api
 from OSMPythonTools.overpass import overpassQueryBuilder
 from OSMPythonTools.overpass import Overpass
@@ -84,7 +84,7 @@ class RailNetwork:
                     # Befülle diese mit Daten
                     nw.lon = n.lon()
                     nw.lat = n.lat()
-                    nw.ele = ele_data.get_elevation(nw.lon, nw.lat)
+                    nw.ele = ele_data.get_elevation(nw.lat, nw.lon)
 
                     nw.x, nw.y = self._lonlatInXY(bbx[1], bbx[0], nw.lon, nw.lat)
 
@@ -236,7 +236,9 @@ class Route:
 
         self.maxRowCount = 1000000
         self.zwischenPunkte = 3
-        
+
+    def __iter__(self):
+        return iter(self.edges.values())
 
     def plotRoute(self, mode=1):
         if mode == 1:
@@ -261,7 +263,19 @@ class Route:
 
         elif mode == 2:
             # Höhendarstellung
-            pass
+            x = list()
+            y = list()
+            l = 0
+            x.append(l)
+            for e in self.edges:
+                l += self.edges[e].length
+                x.append(l)
+            for p in self.nodes:
+                y.append(p.ele)
+
+            plt.figure()
+            plt.plot(x, y)
+            plt.show()
     
     def bSpline(self):
         plist = list()
