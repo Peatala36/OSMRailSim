@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import interpolate
 
+import Infrastruktur
+
 
 
 overpass = Overpass()
@@ -18,10 +20,12 @@ api = Api()
 # lon = geographische Länge  -- x -- München liegt auf 11°
 # lat = geographische Breite -- y -- München liegt auf 48°
 
-class RailNetwork:
+class Downloader:
     def __init__(self):
-        self.edges = dict()
-        self.nodes = dict()
+        #self.edges = dict()
+        #self.nodes = dict()
+
+        self.rn = Infrastruktur.RailNetwork()
 
         self.earth_R = 6371001
 
@@ -78,9 +82,10 @@ class RailNetwork:
         for w in bbx_rail.ways():
             previousNode = None
             for n in w.nodes():
-                if not n.id() in self.nodes:
+                # Ist der Node mit der ID schon im RailNetwork?
+                if not n.id() in self.rn.nodes:
                     # Erzeuge neue Instanz eines nodes()
-                    nw = Node(n.id())
+                    nw = Infrastruktur.Node(n.id())
                     # Befülle diese mit Daten
                     nw.lon = n.lon()
                     nw.lat = n.lat()
@@ -89,14 +94,17 @@ class RailNetwork:
                     nw.x, nw.y = self._lonlatInXY(bbx[1], bbx[0], nw.lon, nw.lat)
 
                     # Füge nw den RailNetwork hinzu:
-                    self.nodes[nw.OSMId] = nw
+                    self.rn.nodes[nw.OSMId] = nw
                 else:
-                    nw = self.nodes[n.id()]
+                    nw = self.rn.nodes[n.id()]
 
+                # Gibt es einen prevousNode? Dann erzeuge ein Edge
                 if previousNode != None:
                     # Erzeuge eine Edge zwischen den aktuellen Node und dem vorherigen
-                    e = Edge(nw, previousNode)
-                    # Befülle ihn mit Daten aus dem übergeordneten Way
+                    e = Infrastruktur.Edge()
+                    e.createEdge(nw, previousNode)
+                    
+                    # Befülle ihn mit Daten aus dem übergeordneten OSM Way
                     e.setSpeed(w.tag('maxspeed'))
                     if w.tag('bridge') == "yes":
                         e.bridge = True
@@ -105,24 +113,20 @@ class RailNetwork:
                     if w.tag('electrified') != "no":
                         e.electrified = True
 
-                    # Füge den e den beiden Nodes hinzu
-                    nw.edges.append(e)
-                    previousNode.edges.append(e)
-
                     # Füge den e beim RailNetwork hinzu
-                    self.edges[nodesToEdgeID(nw, previousNode)] = e
+                    self.rn.edges[Infrastruktur.nodesToEdgeID(nw, previousNode)] = e
 
                 #for e in nw.edges:
                 #    print(str(e.getNeighbor(nw).OSMId()))
                 previousNode = nw
 
-        debug("Es wurden " + str(len(self.nodes)) + " Nodes und " + str(len(self.edges)) + " Edges erstellt")
+        debug("Es wurden " + str(len(self.rn.nodes)) + " Nodes und " + str(len(self.rn.edges)) + " Edges erstellt")
         
     def routing(self, waypoints):
         # waypoints ist eine Liste von Wegpunkten auf der Route
         # Prüfe ob jeder Node Teil des RailNetworks ist:
         for n in waypoints:
-            if not n in self.nodes:
+            if not n in self.rn.nodes:
                 print("Node " + str(n) + " ist nicht Teil des RailNetworks")
 
         # Neu Instanz einer Route
@@ -133,12 +137,12 @@ class RailNetwork:
         
         # Führe nacheinander den AStern-Algorithmus durch und füge die einzelnen Teile aneinander
         for n in range(1, len(waypoints)):
-            r.nodes += self._aStar(self.nodes[waypoints[n-1]], self.nodes[waypoints[n]])
+            r.nodes += self._aStar(self.rn.nodes[waypoints[n-1]], self.rn.nodes[waypoints[n]])
 
         # Füge auch alle betroffenen Edges der Route hinzu:
         for n in range(1, len(r.nodes)):
-            ID = nodesToEdgeID(r.nodes[n-1], r.nodes[n])
-            r.edges[ID] = self.edges[ID]
+            ID = Infrastruktur.nodesToEdgeID(r.nodes[n-1], r.nodes[n])
+            r.edges[ID] = self.rn.edges[ID]
         
         return r
             
@@ -202,7 +206,7 @@ class RailNetwork:
         return route
 
     def _getNode(self, nodeID):
-        new = Node(nodeID)        
+        new = Infrastruktur.Node(nodeID)        
         try:
             n = api.query('node/' + str(nodeID))
             #print(n.tags())
@@ -386,7 +390,7 @@ class Route:
         for i in range(1, len(self.nodes)):
             r, c = self._points_2_radius(self.b_spline[0][n:m], self.b_spline[1][n:m])
             
-            e = self.edges[nodesToEdgeID(self.nodes[i-1], self.nodes[i])]
+            e = self.edges[Infrastruktur.nodesToEdgeID(self.nodes[i-1], self.nodes[i])]
             e.radius = round(r, 1)
             e.length = self._calcDist(self.b_spline[0][n:m], self.b_spline[1][n:m])
             e.gradient = e._getGradient()
@@ -418,60 +422,6 @@ class Route:
                     break
                 cw.writerow([round(weg, 3), e.length, e.getSpeed(), e.gradient, e.bridge, e.tunnel, e.electrified])
                 weg += e.length / 1000
-                
-
-
-class Node:
-    def __init__(self, ID):
-        self.OSMId = ID
-        self.lon = 0
-        self.lat = 0
-        self.ele = 0
-        self.x = 0
-        self.y = 0
-        self.edges = list()
-
-        # Attribute für A*
-        self.cameFrom = None
-        self.g = 0.0
-        self.f = 0.0
-        self.explored = False
-        self.known = False
-    def getNeighbors(self):
-        # Gibt eine Liste aller benachbarten Knoten zurück
-        gn = list()
-        for e in self.edges:
-            gn.append(e.getNeighbor(self))
-        return gn
-
-
-class Edge:
-    def __init__(self, node1, node2):
-        self._node1 = node1
-        self._node2 = node2
-        self._edgeID = nodesToEdgeID(node1, node2)
-        self._maxspeed = 0
-        self.length = 0.1
-        self.radius = 0
-        self.gradient = 0
-        self.electrified  = False
-        self.tunnel = False
-        self.bridge = False
-
-        self.itp_h = abs(node2.x - node1.x)
-    def getNeighbor(self, origin):
-        if self._node1 == origin:
-            return self._node2
-        elif self._node2 == origin:
-            return self._node1
-        else:
-            return False
-    def setSpeed(self, speed):
-        self._maxspeed = speed
-    def getSpeed(self):
-        return self._maxspeed
-    def _getGradient(self):
-        return round((self._node1.ele - self._node2.ele) / self.length * 1000, 1)
 
         
 def calcDistance(node1, node2):
@@ -481,23 +431,17 @@ def debug(text):
     debugLevel = 1
     if debugLevel == 0:
         print(text)
-
-def nodesToEdgeID(node1, node2):
-    return str(min(node1.OSMId, node2.OSMId)) + "," + str(max(node1.OSMId, node2.OSMId))
-
-def EdgeIdToNodes(edgeID):
-    return edgeID.split(",")
     
 
       
 
-r = RailNetwork()
+r = Downloader()
 bbx = r.bbxBuilder(2991396848, 389926882)
 #bbx = r.bbxBuilder(389903144, 1201319848)
 r.downloadBoundingBox(bbx)
 
 f = r.routing([2991396848, 389926882])
 #f = r.routing([389903144, 1201319848])
-f.bSpline()
-f.estimateRadiusBetween2Nodes()
+#f.bSpline()
+#f.estimateRadiusBetween2Nodes()
 

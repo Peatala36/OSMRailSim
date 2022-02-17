@@ -1,10 +1,10 @@
 import sys
 from PyQt5 import QtWidgets, uic
-from PyQt5.QtWidgets import QGraphicsScene, QFileDialog, QGraphicsItem
+from PyQt5.QtWidgets import QGraphicsScene, QFileDialog, QGraphicsItem, QGraphicsView
 from PyQt5.QtCore import QRectF, QPointF, pyqtSignal, QObject
 from PyQt5 import QtCore
 
-from OSMRailExport import RailNetwork
+from OSMRailExport import Downloader
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
@@ -56,23 +56,21 @@ class MainWindow(QtWidgets.QMainWindow):
     def onGesamtansicht(self):
         pass
         
-        
-
     def streckendarstellung(self):
-        r = RailNetwork()
+        r = Downloader()
         bbx = r.bbxBuilder(2991396848, 389926882)
         r.downloadBoundingBox(bbx)
         
-        for n in r.nodes:
+        for n in r.rn.nodes:
             #r=5
             #scene.addEllipse(-x-r, y-r, 2*r, 2*r)
-            i = NodeItem(-r.nodes[n].x, r.nodes[n].y, r.nodes[n], self)
+            i = NodeItem(-r.rn.nodes[n].x, r.rn.nodes[n].y, r.rn.nodes[n], self)
             self.scene.addItem(i)
             
 
-        for e in r.edges:
-            n1 = r.edges[e]._node1
-            n2 = r.edges[e]._node2
+        for e in r.rn.edges:
+            n1 = r.rn.edges[e]._node1
+            n2 = r.rn.edges[e]._node2
             self.scene.addLine(-n1.x, n1.y, -n2.x, n2.y)
         
         
@@ -96,7 +94,7 @@ class NodeItem(QGraphicsItem):
         self._y = int(y)
         self._window = window
 
-        self._selectedChange = SelectedChange()
+        #self._selectedChange.connect(self.mousePressEvent)
         
     def boundingRect(self):
         penWidth = 1.0
@@ -110,23 +108,14 @@ class NodeItem(QGraphicsItem):
     def mousePressEvent(self, event):
         print(self._node.OSMId)
         self._window.ui.statusBar.showMessage("Node: " + str(self._node.OSMId))
-        #self.clicked.emit()
 
-        self._selectedChange.emit('NodeItem')
-        super(NodeItem,self).mousePressEvent(event)
+class MyGraphicView(QGraphicsView):
+    def __init__(self, parent=None):
+        super(MyGraphicView,self).__init__(parent)
 
-    def selectedChange():
-        def fget(self):
-            return self._selectedChange.selectedChange
-        return locals()
-
-    selectedChange = property(**selectedChange())
+    
 
 
-class SelectedChange(QObject):
-    selectedChange = pyqtSignal(str)
-    def __init__(self):
-        super(SelectedChange,self).__init__()
 
 
 
